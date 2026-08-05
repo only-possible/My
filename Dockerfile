@@ -4,7 +4,7 @@ FROM golang:alpine AS builder
 WORKDIR /app
 
 # Copy module file and auto-generate correct go.sum
-#COPY go.mod ./
+COPY go.mod ./
 RUN go mod tidy
 
 # Copy source and build
