@@ -20,6 +20,6 @@ WORKDIR /app
 COPY --from=builder /app/nexabot .
 
 # data.json will persist here
-VOLUME ["/app"]
+
 
 CMD ["./nexabot"]
