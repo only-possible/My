@@ -1,5 +1,5 @@
 package main
-
+/*
 import (
 	"fmt"
 	"strings"
@@ -139,3 +139,4 @@ func sendOtpToGroup(bot *tgbotapi.BotAPI, targetUserID int64, phoneNum, service,
 
 	queueGroupMessage(OtpGroupId, baseTextGroup, kbGroup)
 }
+*/
