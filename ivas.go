@@ -175,19 +175,22 @@ func processIvasSMS(bot *tgbotapi.BotAPI, sms IvasSMSPayload, botLink string) {
 		service = "SMS Service"
 	}
 
+	// 🟢 0. Duplicate SMS Filter Check
+	if isDuplicateSMS(phoneNum, service, smsText) {
+		return
+	}
+
 	// 🟢 1. IVAS Number Cut Logic (RAM Cache + SQLite)
 	ramUsedNumbersMu.Lock()
 	ramUsedNumbers[fmt.Sprintf("%s:%s", phoneNum, service)] = true
-//	ramUsedNumbers[phoneNum] = true
 	ramUsedNumbersMu.Unlock()
 
 	go func(p, s string) {
 		_, _ = sqliteDB.Exec("INSERT OR IGNORE INTO used_numbers (phone_number, service, used_at) VALUES (?, ?, ?)", p, s, time.Now())
 	}(phoneNum, service)
 
-	var targetUserID int64
-	var countryFile string
-	err := sqliteDB.QueryRow("SELECT user_id, country_file FROM user_locks WHERE phone_number = ? ORDER BY locked_at DESC LIMIT 1", phoneNum).Scan(&targetUserID, &countryFile)
+	// 🟢 2. Ultra Fast RAM + SQLite Sync Lock Lookup (getUserLockInfo Call)
+	targetUserID, countryFile, found := getUserLockInfo(phoneNum)
 
 	if countryFile == "" {
 		cleanR := cleanCountryName(sms.Range)
@@ -202,9 +205,9 @@ func processIvasSMS(bot *tgbotapi.BotAPI, sms IvasSMSPayload, botLink string) {
 		}
 	}
 
-	// 🟢 2. Dynamic OTP Sender Calls (From config.go)
-	if err == nil && targetUserID > 0 {
-		// یوزر اور گروپ دونوں کو نیا فنکشن ہی میسج بھیجے گا
+	// 🟢 3. Dynamic OTP Sender Calls
+	if found && targetUserID > 0 {
+		// یوزر اور گروپ دونوں کو میسج بھیجے گا
 		sendOtpToUser(bot, targetUserID, phoneNum, service, countryFile, smsText, price)
 		sendOtpToGroup(bot, targetUserID, phoneNum, service, countryFile, smsText, botLink, price)
 
@@ -218,7 +221,7 @@ func processIvasSMS(bot *tgbotapi.BotAPI, sms IvasSMSPayload, botLink string) {
 		now := time.Now().In(time.Local)
 		nowStr := now.Format("2006-01-02")
 
-		// 🟢 Ensure Null Maps in MongoDB are Initialized First (Fix for Silent Update Failures)
+		// 🟢 Ensure Null Maps in MongoDB are Initialized First
 		_, _ = usersCollection.UpdateOne(ctx, bson.M{"id": targetUserID, "api_total_otps": nil}, bson.M{"$set": bson.M{"api_total_otps": bson.M{}}})
 		_, _ = usersCollection.UpdateOne(ctx, bson.M{"id": targetUserID, "api_cycle_otps": nil}, bson.M{"$set": bson.M{"api_cycle_otps": bson.M{}}})
 		_, _ = usersCollection.UpdateOne(ctx, bson.M{"id": targetUserID, "api_cycle_earnings": nil}, bson.M{"$set": bson.M{"api_cycle_earnings": bson.M{}}})
@@ -278,10 +281,11 @@ func processIvasSMS(bot *tgbotapi.BotAPI, sms IvasSMSPayload, botLink string) {
 		updateGlobalStats(g)
 
 	} else {
-		// اگر لاک یوزر نہ ہو تو صرف گروپ میں بھیجیں
+		// اگر لاک یوزر نہ ہو تو صرف گروپ میں بھیجیں (System Number)
 		sendOtpToGroup(bot, 0, phoneNum, service, countryFile, smsText, botLink, price)
 	}
 }
+
 
 
 
